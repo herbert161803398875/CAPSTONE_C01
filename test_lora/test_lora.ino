@@ -220,7 +220,7 @@ void transmitStatus() {
   else if (pin12Status == LOW) {
     Serial.println("OVERRIDE OFF");
       if (pin14Status == HIGH) {
-          Serial.println("AUTO, PUMP ON");
+          Serial.println("NON-AUTO, PUMP ON");
           statusPump = 1; // HIGH jika pin14Status HIGH
       } else if (pin14Status == LOW) {
           if (volume_air >= batas_volume) {
