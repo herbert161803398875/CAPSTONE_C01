@@ -1,4 +1,4 @@
-#include <LoRa.h>                 
+#include <LoRa.h>
 #include <WiFiMulti.h>
 #include <InfluxDbClient.h>
 #include <InfluxDbCloud.h>
@@ -10,7 +10,7 @@
 #define LORA_SS 16
 #define LORA_RST 17
 #define LORA_DIO0 4
-#define TFT_CS 27                  
+#define TFT_CS 27
 
 #define WIFI_SSID "Purba Family 2"
 #define WIFI_PASSWORD "fgd45RR##"
@@ -20,10 +20,14 @@
 #define INFLUXDB_BUCKET "water-monitoring"
 
 float batas_volume = 9999;
-int pin14Status = 0; 
-int pin12Status = 0; 
+int pin14Status = 0;
+int pin12Status = 0;
 int statusPump = 1;
-bool isReceiver = true; 
+bool isReceiver = true;
+
+// untuk pembacaan serial menggunakan interrupt
+volatile bool newSerialData = false;
+String serialBuffer = "";
 
 WiFiMulti wifiMulti;
 InfluxDBClient client(INFLUXDB_URL, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_TOKEN, InfluxDbCloud2CACert);
@@ -38,18 +42,27 @@ bool dataAvailable = false;
 
 float pH = 0.0, tds = 0.0, turbidity = 0.0, kualitas_air = 0.0, volume_air = 0.0, suhu = 0.0;
 
+// Callback untuk pembacaan serial
+void IRAM_ATTR serialEvent() {
+  while (Serial1.available()) {
+    char inChar = (char)Serial1.read();
+    serialBuffer += inChar;
+    if (inChar == '\n') {
+      newSerialData = true;  // Set flag ketika data lengkap diterima
+    }
+  }
+}
+
 void sendMessage(String message) {
   String url = "https://api.callmebot.com/whatsapp.php?phone=" + phoneNumber + "&apikey=" + apiKey + "&text=" + customUrlEncode(message); 
   HTTPClient http;
   http.begin(url);
-
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
   
   int httpResponseCode = http.POST(url);
-  if (httpResponseCode == 200){
+  if (httpResponseCode == 200) {
     Serial.println("Message sent successfully");
-  }
-  else {
+  } else {
     Serial.print("Error sending the message, HTTP response code: ");
     Serial.println(httpResponseCode);
   }
@@ -92,9 +105,32 @@ void setup() {
 
   tft.init();
   tft.setRotation(1);
+
+  // Start UART for communication and attach interrupt
+  Serial1.begin(9600, SERIAL_8N1, 26, 25);
+  Serial1.onReceive(serialEvent);  // Attach callback for serial data
 }
 
 void loop() {
+  // Proses data baru dari Serial jika tersedia
+  if (newSerialData) {
+    Serial.print("Data received: ");
+    Serial.println(serialBuffer);
+
+    float tempVolume = serialBuffer.toFloat();
+    if (!isnan(tempVolume)) {
+      batas_volume = tempVolume;
+      Serial.print("Updated Volume Limit: ");
+      Serial.println(batas_volume);
+    } else {
+      Serial.println("Invalid data received, ignoring...");
+    }
+
+    // Reset flag dan buffer
+    newSerialData = false;
+    serialBuffer = "";
+  }
+
   if (dataAvailable) {
     parseData();
     transmitStatus();
@@ -178,7 +214,7 @@ void uploadToInfluxDB() {
 }
 
 void sendWhatsAppNotification() {
-  if (kualitas_air <= -2.0) {  // Kirim peringatan hanya jika kualitas air buruk
+  if (kualitas_air <= -2.0) {  
     String message = "Peringatan: Kualitas Air Tidak Layak Pakai!\n";
     message += "Indeks Kualitas Air: " + String(kualitas_air) + "\n";
     message += "Data Pemantauan Air Lainnya:\n";
@@ -191,7 +227,6 @@ void sendWhatsAppNotification() {
     sendMessage(message);
   }
 }
-
 
 void transmitStatus() {
   if (isReceiver) {
@@ -214,26 +249,25 @@ void transmitStatus() {
   }
   
   if (pin12Status == HIGH) {
-      Serial.println("OVERRIDE ON : PUMP OFF");
-      statusPump = 0; // LOW jika pin12Status HIGH
-  }
-  else if (pin12Status == LOW) {
+    Serial.println("OVERRIDE ON : PUMP OFF");
+    statusPump = 0; // LOW jika pin12Status HIGH
+  } else if (pin12Status == LOW) {
     Serial.println("OVERRIDE OFF");
-      if (pin14Status == HIGH) {
-          Serial.println("NON-AUTO, PUMP ON");
-          statusPump = 1; // HIGH jika pin14Status HIGH
-      } else if (pin14Status == LOW) {
-          if (volume_air >= batas_volume) {
-              Serial.println("Batas volume telah terpenuhi");
-              statusPump = 0; // LOW
-          } else if (kualitas_air <= -2.0) {
-              Serial.println("Indeks Air terlalu buruk");
-              statusPump = 0; // LOW
-          } else {
-              Serial.println("Batas belum terpenuhi");
-              statusPump = 1; // HIGH
-          }
+    if (pin14Status == HIGH) {
+      Serial.println("NON-AUTO, PUMP ON");
+      statusPump = 1; // HIGH jika pin14Status HIGH
+    } else if (pin14Status == LOW) {
+      if (volume_air >= batas_volume) {
+        Serial.println("Batas volume telah terpenuhi");
+        statusPump = 0; // LOW
+      } else if (kualitas_air <= -2.0) {
+        Serial.println("Indeks Air terlalu buruk");
+        statusPump = 0; // LOW
+      } else {
+        Serial.println("Batas belum terpenuhi");
+        statusPump = 1; // HIGH
       }
+    }
   }
 }
 
