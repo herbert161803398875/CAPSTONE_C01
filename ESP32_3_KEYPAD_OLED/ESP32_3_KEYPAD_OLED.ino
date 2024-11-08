@@ -28,8 +28,9 @@ String volume = "";
 float batas_volume = 0.0;
 String Strbatas_vol = "";
 
-// Setup for dual I2C
-//TwoWire I2CSlave = TwoWire(0);   // Use I2C Bus 0 for communication with other ESP32 (slave mode)
+// Timer interval untuk mengatur pengiriman serial
+unsigned long lastSendTime = 0;
+const unsigned long sendInterval = 500;  // Interval waktu dalam milidetik
 
 void setup() {
   Serial.begin(115200);
@@ -50,12 +51,7 @@ void setup() {
 
   updateDisplay();
 
-  // Initialize I2C Bus 0 (Slave) for communication with other ESP32
-//  I2CSlave.begin(9, 26, 25);      // SDA on 26, SCL on 25, address 0x09
-//  I2CSlave.setClock(100000);   // Optional: Set the I2C clock speed to 100kHz for Bus 0
-//  I2CSlave.onRequest(onRequestHandler);  // Set function to handle request from master
-
-  //intialize rxtx com
+  // Initialize Serial1 for communication with receiver ESP32
   Serial1.begin(9600, SERIAL_8N1, 26, 25);
 }
 
@@ -82,8 +78,6 @@ void loop() {
           Serial.print("Batas Volume ditetapkan: ");
           Serial.println(batas_volume);
         }
-
-        // No need to switch modes; batas_volume will be sent when master requests it
       } else {
         batas_volume = 0.0;
         Serial.println("Batas Volume ditetapkan: Tidak ada");
@@ -97,20 +91,16 @@ void loop() {
       updateDisplay();
     }
   }
-//  union {
-//      float value;
-//      byte bytes[4];
-//  } batasVolData;
-//  batasVolData.value = batas_volume;
-//  
-//  for (int i = 0; i < 4; i++) {
-//      Serial1.write(batasVolData.bytes[i]);
-//  }
 
-    Strbatas_vol = String(batas_volume); // konversi float ke string
-    Serial1.println(Strbatas_vol);      // kirim data ke Serial1
+  // Mengirim data hanya jika interval waktu tercapai
+  if (millis() - lastSendTime >= sendInterval) {
+    lastSendTime = millis();  // Reset timer
+
+    Strbatas_vol = String(batas_volume); // Konversi float ke string
+    Serial1.println(Strbatas_vol);       // Kirim data ke Serial1
     Serial.print("Mengirim data: ");
-    Serial.println(Strbatas_vol);       // tampilkan di Serial Monitor
+    Serial.println(Strbatas_vol);        // Tampilkan di Serial Monitor
+  }
 }
 
 void updateDisplay() {
@@ -143,23 +133,3 @@ void showConfirmation() {
   display.print(" Liter");
   display.display();
 }
-
-// I2C Slave Request Handler
-// I2C Slave Request Handler
-// I2C Slave Request Handler
-//void onRequestHandler() {
-//    // Use a union to safely convert batas_volume to byte array
-//  union {
-//    float value;
-//    uint8_t bytes[4];
-//  } batasVolumedata;
-////  if (isnan(batas_volume)) {
-////    batas_volume = 0.0;  // Set a default value if batas_volume is NaN
-////  }
-//  batasVolumedata.value = batas_volume;  // Assign float to union
-//  I2CSlave.write(batasVolumedata.bytes, 4);
-//  // Send each byte of batas_volume
-////  for (int i = 0; i < 4; i++) {
-////    I2CSlave.write(batasVolumedata.bytes[i]);
-////  }
-//}
