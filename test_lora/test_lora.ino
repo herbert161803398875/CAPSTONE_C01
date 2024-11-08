@@ -22,6 +22,7 @@
 float batas_volume = 9999;
 int pin14Status = 0; 
 int pin12Status = 0; 
+int statusPump = 1;
 bool isReceiver = true; 
 
 WiFiMulti wifiMulti;
@@ -61,6 +62,8 @@ void setup() {
   pinMode(TFT_CS, OUTPUT);
   pinMode(14, INPUT_PULLDOWN);
   pinMode(12, INPUT_PULLDOWN);
+  pinMode(2, OUTPUT);
+  digitalWrite(2, HIGH);
 
   digitalWrite(TFT_CS, HIGH);
   if (!LoRa.begin(433E6)) {
@@ -175,7 +178,7 @@ void uploadToInfluxDB() {
 }
 
 void sendWhatsAppNotification() {
-  if (kualitas_air <= 5.0) {  // Kirim peringatan hanya jika kualitas air buruk
+  if (kualitas_air <= -2.0) {  // Kirim peringatan hanya jika kualitas air buruk
     String message = "Peringatan: Kualitas Air Tidak Layak Pakai!\n";
     message += "Indeks Kualitas Air: " + String(kualitas_air) + "\n";
     message += "Data Pemantauan Air Lainnya:\n";
@@ -208,6 +211,29 @@ void transmitStatus() {
     
     digitalWrite(LORA_SS, HIGH);
     digitalWrite(TFT_CS, LOW);
+  }
+  
+  if (pin12Status == HIGH) {
+      Serial.println("OVERRIDE ON : PUMP OFF");
+      statusPump = 0; // LOW jika pin12Status HIGH
+  }
+  else if (pin12Status == LOW) {
+    Serial.println("OVERRIDE OFF");
+      if (pin14Status == HIGH) {
+          Serial.println("AUTO, PUMP ON");
+          statusPump = 1; // HIGH jika pin14Status HIGH
+      } else if (pin14Status == LOW) {
+          if (volume_air >= batas_volume) {
+              Serial.println("Batas volume telah terpenuhi");
+              statusPump = 0; // LOW
+          } else if (kualitas_air <= -2.0) {
+              Serial.println("Indeks Air terlalu buruk");
+              statusPump = 0; // LOW
+          } else {
+              Serial.println("Batas belum terpenuhi");
+              statusPump = 1; // HIGH
+          }
+      }
   }
 }
 
